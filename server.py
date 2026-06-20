@@ -1,29 +1,21 @@
 import os
-import json
 import time
 import secrets
 from datetime import datetime
 from functools import wraps
 from flask import Flask, request, jsonify, render_template_string
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 app = Flask(__name__)
 
-# ============================================
-# КОНФИГУРАЦИЯ
-# ============================================
 API_SECRET = os.getenv('API_SECRET', 'change_this_secret_key_in_production')
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-# Rate limiting
 rate_limit_store = {}
 RATE_LIMIT = 30
 RATE_WINDOW = 60
 
-# ============================================
-# ВСЕ 120 КЛЮЧЕЙ
-# ============================================
 ALL_KEYS = [
     ("SCARED-BASIC-0GRF5A4M", "BASIC"), ("SCARED-BASIC-0MVAPYIX", "BASIC"),
     ("SCARED-BASIC-0P55CST0", "BASIC"), ("SCARED-BASIC-0UPJ6X4H", "BASIC"),
@@ -87,53 +79,30 @@ ALL_KEYS = [
     ("SCARED-PREM-ZR3SGYI0", "PREM"), ("SCARED-PREM-ZUVBT0RX", "PREM"),
 ]
 
-# ============================================
-# БАЗА ДАННЫХ
-# ============================================
 def get_db():
-    if DATABASE_URL:
-        conn = psycopg2.connect(DATABASE_URL)
-    else:
-        conn = psycopg2.connect(
-            dbname='scaredopti',
-            user='postgres',
-            password='postgres',
-            host='localhost',
-            port='5432'
-        )
-    conn.autocommit = True
-    return conn
+    return psycopg.connect(DATABASE_URL, autocommit=True)
 
 def init_db():
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS licenses (
-            key TEXT PRIMARY KEY,
-            tier TEXT NOT NULL,
-            status TEXT DEFAULT 'unused',
-            hwid TEXT,
-            activated_at TIMESTAMP,
-            is_active BOOLEAN DEFAULT TRUE
-        )
-    ''')
-    
-    # Вставляем все ключи если их нет
-    for key, tier in ALL_KEYS:
-        cursor.execute('''
-            INSERT INTO licenses (key, tier, status) 
-            VALUES (%s, %s, 'unused')
-            ON CONFLICT (key) DO NOTHING
-        ''', (key, tier))
-    
-    cursor.close()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS licenses (
+                    key TEXT PRIMARY KEY,
+                    tier TEXT NOT NULL,
+                    status TEXT DEFAULT 'unused',
+                    hwid TEXT,
+                    activated_at TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            ''')
+            for key, tier in ALL_KEYS:
+                cur.execute('''
+                    INSERT INTO licenses (key, tier, status) 
+                    VALUES (%s, %s, 'unused')
+                    ON CONFLICT (key) DO NOTHING
+                ''', (key, tier))
     print(f"[OK] Database initialized with {len(ALL_KEYS)} keys")
 
-# ============================================
-# RATE LIMITING
-# ============================================
 def check_rate_limit(ip):
     current_time = time.time()
     if ip not in rate_limit_store:
@@ -144,9 +113,6 @@ def check_rate_limit(ip):
     rate_limit_store[ip].append(current_time)
     return True
 
-# ============================================
-# ДЕКОРАТОРЫ
-# ============================================
 def require_api_secret(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -156,9 +122,6 @@ def require_api_secret(f):
         return f(*args, **kwargs)
     return decorated
 
-# ============================================
-# HTML ИНТЕРФЕЙС
-# ============================================
 HTML_PAGE = """
 <!DOCTYPE html>
 <html>
@@ -167,147 +130,35 @@ HTML_PAGE = """
     <title>ScaredOpti Admin</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: Arial, sans-serif; 
-            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460); 
-            color: #fff; 
-            padding: 20px;
-            min-height: 100vh;
-        }
+        body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460); color: #fff; padding: 20px; min-height: 100vh; }
         .container { max-width: 1400px; margin: 0 auto; }
-        h1 { 
-            text-align: center; 
-            color: #667eea; 
-            margin-bottom: 30px;
-            font-size: 36px;
-        }
-        .stats { 
-            display: flex; 
-            gap: 20px; 
-            justify-content: center; 
-            flex-wrap: wrap; 
-            margin-bottom: 30px; 
-        }
-        .stat { 
-            background: rgba(102, 126, 234, 0.1); 
-            padding: 25px 40px; 
-            border-radius: 15px; 
-            text-align: center;
-            border: 1px solid rgba(102, 126, 234, 0.3);
-        }
+        h1 { text-align: center; color: #667eea; margin-bottom: 30px; font-size: 36px; }
+        .stats { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
+        .stat { background: rgba(102, 126, 234, 0.1); padding: 25px 40px; border-radius: 15px; text-align: center; border: 1px solid rgba(102, 126, 234, 0.3); }
         .stat h3 { color: #888; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; }
         .stat .num { font-size: 36px; font-weight: bold; color: #667eea; }
-        .filters { 
-            display: flex; 
-            gap: 10px; 
-            justify-content: center; 
-            flex-wrap: wrap; 
-            margin-bottom: 30px; 
-        }
-        button { 
-            padding: 12px 24px; 
-            background: rgba(102, 126, 234, 0.3); 
-            border: 1px solid #667eea; 
-            border-radius: 8px; 
-            color: #fff; 
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        button:hover, button.active { 
-            background: #667eea;
-            transform: translateY(-2px);
-        }
-        input { 
-            padding: 12px 20px; 
-            border-radius: 8px; 
-            border: 1px solid rgba(102, 126, 234, 0.3); 
-            background: rgba(102, 126, 234, 0.1); 
-            color: #fff; 
-            width: 300px;
-            outline: none;
-        }
+        .filters { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
+        button { padding: 12px 24px; background: rgba(102, 126, 234, 0.3); border: 1px solid #667eea; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 600; transition: all 0.3s; }
+        button:hover, button.active { background: #667eea; transform: translateY(-2px); }
+        input { padding: 12px 20px; border-radius: 8px; border: 1px solid rgba(102, 126, 234, 0.3); background: rgba(102, 126, 234, 0.1); color: #fff; width: 300px; outline: none; }
         input::placeholder { color: #666; }
-        .keys { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); 
-            gap: 15px; 
-        }
-        .key { 
-            background: rgba(102, 126, 234, 0.05); 
-            padding: 20px; 
-            border-radius: 12px;
-            border-left: 4px solid #2ecc71;
-            border: 1px solid rgba(102, 126, 234, 0.2);
-        }
+        .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
+        .key { background: rgba(102, 126, 234, 0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(102, 126, 234, 0.2); border-left: 4px solid #2ecc71; }
         .key.used { border-left-color: #e74c3c; }
-        .key-header { 
-            display: flex; 
-            justify-content: space-between; 
-            margin-bottom: 12px; 
-        }
-        .key-code { 
-            font-family: monospace; 
-            font-weight: bold; 
-            color: #667eea;
-            font-size: 14px;
-        }
-        .tier { 
-            padding: 4px 12px; 
-            border-radius: 12px; 
-            font-size: 11px; 
-            background: #667eea;
-            font-weight: bold;
-        }
+        .key-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+        .key-code { font-family: monospace; font-weight: bold; color: #667eea; font-size: 14px; }
+        .tier { padding: 4px 12px; border-radius: 12px; font-size: 11px; background: #667eea; font-weight: bold; }
         .tier.prem { background: #e74c3c; }
-        .status { 
-            display: inline-block;
-            padding: 5px 12px; 
-            border-radius: 12px; 
-            font-size: 11px;
-            font-weight: bold;
-            margin: 8px 0;
-            text-transform: uppercase;
-        }
+        .status { display: inline-block; padding: 5px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; margin: 8px 0; text-transform: uppercase; }
         .status.unused { background: #2ecc71; color: #000; }
         .status.used { background: #e74c3c; color: #fff; }
-        .info { 
-            font-size: 12px; 
-            color: #888; 
-            margin: 8px 0;
-        }
-        .toggle { 
-            width: 100%; 
-            padding: 10px; 
-            margin-top: 12px;
-            border: none; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        .toggle.to-used { 
-            background: rgba(231, 76, 60, 0.3); 
-            color: #e74c3c;
-            border: 1px solid #e74c3c;
-        }
-        .toggle.to-unused { 
-            background: rgba(46, 204, 113, 0.3); 
-            color: #2ecc71;
-            border: 1px solid #2ecc71;
-        }
+        .info { font-size: 12px; color: #888; margin: 8px 0; }
+        .toggle { width: 100%; padding: 10px; margin-top: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+        .toggle.to-used { background: rgba(231, 76, 60, 0.3); color: #e74c3c; border: 1px solid #e74c3c; }
+        .toggle.to-unused { background: rgba(46, 204, 113, 0.3); color: #2ecc71; border: 1px solid #2ecc71; }
         .toggle:hover { transform: translateY(-2px); opacity: 0.9; }
-        .error { 
-            text-align: center; 
-            padding: 60px; 
-            color: #e74c3c;
-            font-size: 18px;
-        }
-        .loading {
-            text-align: center;
-            padding: 60px;
-            color: #667eea;
-        }
+        .error { text-align: center; padding: 60px; color: #e74c3c; font-size: 18px; }
+        .loading { text-align: center; padding: 60px; color: #667eea; }
     </style>
 </head>
 <body>
@@ -333,12 +184,9 @@ HTML_PAGE = """
     <script>
         let keys = [];
         let filter = 'all';
-
         async function load() {
             try {
-                const r = await fetch('/api/keys', {
-                    headers: {'X-API-Secret': '{{ api_secret }}'}
-                });
+                const r = await fetch('/api/keys', { headers: {'X-API-Secret': '{{ api_secret }}'} });
                 const data = await r.json();
                 keys = data.keys;
                 updateStats();
@@ -347,7 +195,6 @@ HTML_PAGE = """
                 document.getElementById('keys').innerHTML = '<div class="error">Error: ' + e.message + '</div>';
             }
         }
-
         function updateStats() {
             document.getElementById('total').textContent = keys.length;
             document.getElementById('used').textContent = keys.filter(k => k.status === 'used').length;
@@ -355,14 +202,12 @@ HTML_PAGE = """
             document.getElementById('basic').textContent = keys.filter(k => k.tier === 'BASIC').length;
             document.getElementById('prem').textContent = keys.filter(k => k.tier === 'PREM').length;
         }
-
         function setFilter(f) {
             filter = f;
             document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
             document.getElementById('btn-' + f).classList.add('active');
             render();
         }
-
         function render() {
             const s = document.getElementById('search').value.toLowerCase();
             let filtered = keys.filter(k => {
@@ -373,12 +218,10 @@ HTML_PAGE = """
                 if (s && !k.key.toLowerCase().includes(s)) return false;
                 return true;
             });
-
             if (filtered.length === 0) {
                 document.getElementById('keys').innerHTML = '<div class="error" style="color:#888;">No keys found</div>';
                 return;
             }
-
             document.getElementById('keys').innerHTML = filtered.map(k => `
                 <div class="key ${k.status}">
                     <div class="key-header">
@@ -395,28 +238,20 @@ HTML_PAGE = """
                 </div>
             `).join('');
         }
-
         async function toggle(key, status) {
             await fetch('/api/update', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Secret': '{{ api_secret }}'
-                },
+                headers: { 'Content-Type': 'application/json', 'X-API-Secret': '{{ api_secret }}' },
                 body: JSON.stringify({key: key, status: status})
             });
             await load();
         }
-
         load();
     </script>
 </body>
 </html>
 """
 
-# ============================================
-# РОУТЫ
-# ============================================
 @app.route('/')
 @app.route('/admin')
 def home():
@@ -425,12 +260,10 @@ def home():
 @app.route('/api/keys')
 @require_api_secret
 def get_keys():
-    conn = get_db()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute('SELECT key, tier, status, hwid, activated_at, is_active FROM licenses ORDER BY tier, key')
-    keys = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute('SELECT key, tier, status, hwid, activated_at, is_active FROM licenses ORDER BY tier, key')
+            keys = cur.fetchall()
     return jsonify({'status': 'ok', 'keys': keys})
 
 @app.route('/api/update', methods=['POST'])
@@ -439,30 +272,16 @@ def update():
     data = request.get_json()
     key = data.get('key')
     status = data.get('status')
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    if status == 'unused':
-        cursor.execute('''
-            UPDATE licenses 
-            SET status = 'unused', hwid = NULL, activated_at = NULL 
-            WHERE key = %s
-        ''', (key,))
-    else:
-        cursor.execute('''
-            UPDATE licenses 
-            SET status = 'used' 
-            WHERE key = %s
-        ''', (key,))
-    
-    cursor.close()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if status == 'unused':
+                cur.execute("UPDATE licenses SET status = 'unused', hwid = NULL, activated_at = NULL WHERE key = %s", (key,))
+            else:
+                cur.execute("UPDATE licenses SET status = 'used' WHERE key = %s", (key,))
     return jsonify({'ok': True})
 
 @app.route('/activate', methods=['POST'])
 def activate():
-    # Rate limiting
     ip = request.remote_addr
     if not check_rate_limit(ip):
         return jsonify({'status': 'error', 'message': 'Rate limit exceeded'}), 429
@@ -474,71 +293,39 @@ def activate():
     if not key or not hwid:
         return jsonify({'status': 'error', 'message': 'Key and HWID required'}), 400
     
-    # Проверка формата ключа
     parts = key.split('-')
     if len(parts) != 3 or parts[0] != 'SCARED' or parts[1] not in ['BASIC', 'PREM'] or len(parts[2]) != 8:
         return jsonify({'status': 'invalid', 'message': 'Invalid key format'}), 400
     
-    conn = get_db()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    # Проверяем ключ
-    cursor.execute('SELECT * FROM licenses WHERE key = %s', (key,))
-    row = cursor.fetchone()
-    
-    if not row:
-        cursor.close()
-        conn.close()
-        return jsonify({'status': 'invalid', 'message': 'Key not found'}), 404
-    
-    if not row['is_active']:
-        cursor.close()
-        conn.close()
-        return jsonify({'status': 'blocked', 'message': 'Key is deactivated'}), 403
-    
-    tier = row['tier']
-    stored_hwid = row['hwid']
-    
-    # Первая активация
-    if row['status'] == 'unused':
-        cursor.execute('''
-            UPDATE licenses 
-            SET status = 'used', hwid = %s, activated_at = %s 
-            WHERE key = %s
-        ''', (hwid, datetime.now(), key))
-        cursor.close()
-        conn.close()
-        return jsonify({'status': 'activated', 'tier': tier, 'message': 'License activated'})
-    
-    # Уже активирован - проверяем HWID
-    if stored_hwid and stored_hwid != hwid:
-        cursor.close()
-        conn.close()
-        return jsonify({'status': 'blocked', 'message': 'HWID mismatch'})
-    
-    cursor.close()
-    conn.close()
-    return jsonify({'status': 'ok', 'tier': tier, 'message': 'License valid'})
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute('SELECT * FROM licenses WHERE key = %s', (key,))
+            row = cur.fetchone()
+            
+            if not row:
+                return jsonify({'status': 'invalid', 'message': 'Key not found'}), 404
+            
+            if not row['is_active']:
+                return jsonify({'status': 'blocked', 'message': 'Key is deactivated'}), 403
+            
+            tier = row['tier']
+            stored_hwid = row['hwid']
+            
+            if row['status'] == 'unused':
+                cur.execute("UPDATE licenses SET status = 'used', hwid = %s, activated_at = %s WHERE key = %s", 
+                           (hwid, datetime.now(), key))
+                return jsonify({'status': 'activated', 'tier': tier, 'message': 'License activated'})
+            
+            if stored_hwid and stored_hwid != hwid:
+                return jsonify({'status': 'blocked', 'message': 'HWID mismatch'})
+            
+            return jsonify({'status': 'ok', 'tier': tier, 'message': 'License valid'})
 
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()})
 
-# ============================================
-# ЗАПУСК
-# ============================================
+init_db()
+
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("  SCAREDOPTI LICENSE SERVER")
-    print("="*60)
-    print(f"\n  Total keys: {len(ALL_KEYS)}")
-    print(f"  API Secret: {API_SECRET[:4]}...")
-    print(f"  Database: {'PostgreSQL' if DATABASE_URL else 'Local'}")
-    print(f"  Server: http://localhost:5000")
-    print(f"  Admin:  http://localhost:5000/admin")
-    print("\n" + "="*60)
-    print("  Press CTRL+C to stop")
-    print("="*60 + "\n")
-    
-    init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
