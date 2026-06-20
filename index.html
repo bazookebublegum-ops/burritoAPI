@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScaredOpti Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #ffffff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 40px 20px;
+            margin-bottom: 40px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 20px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .header h1 {
+            font-size: 42px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #888;
+            font-size: 16px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-card h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #888;
+            margin-bottom: 15px;
+        }
+        
+        .stat-card .number {
+            font-size: 48px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 40px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .filter-btn {
+            padding: 12px 24px;
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid rgba(102, 126, 234, 0.5);
+            border-radius: 10px;
+            color: #667eea;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        
+        .filter-btn:hover {
+            background: rgba(102, 126, 234, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .filter-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border-color: transparent;
+        }
+        
+        .search-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+        
+        .search-input:focus {
+            border-color: #667eea;
+        }
+        
+        .search-input::placeholder {
+            color: #666;
+        }
+        
+        .keys-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .key-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .key-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #2ecc71;
+        }
+        
+        .key-card.used::before {
+            background: #e74c3c;
+        }
+        
+        .key-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(102, 126, 234, 0.5);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .key-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .key-code {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: bold;
+            color: #667eea;
+            word-break: break-all;
+        }
+        
+        .tier-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .tier-badge.basic {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+        }
+        
+        .tier-badge.prem {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+        }
+        
+        .status-badge.unused {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+        }
+        
+        .status-badge.used {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+        
+        .key-info {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 15px;
+        }
+        
+        .key-info div {
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+        
+        .toggle-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .toggle-btn.mark-used {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+        }
+        
+        .toggle-btn.mark-unused {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+            border: 1px solid rgba(46, 204, 113, 0.5);
+        }
+        
+        .toggle-btn:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+        
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 80px 20px;
+            color: #666;
+        }
+        
+        .empty-state h3 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #888;
+        }
+        
+        @media (max-width: 768px) {
+            .keys-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            .filter-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 ScaredOpti Admin Panel</h1>
+            <p>License Key Management System</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Total Keys</h3>
+                <div class="number" id="stat-total">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Used</h3>
+                <div class="number" id="stat-used">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Unused</h3>
+                <div class="number" id="stat-unused">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Basic</h3>
+                <div class="number" id="stat-basic">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Premium</h3>
+                <div class="number" id="stat-prem">0</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="used">Used</button>
+            <button class="filter-btn" data-filter="unused">Unused</button>
+            <button class="filter-btn" data-filter="basic">Basic</button>
+            <button class="filter-btn" data-filter="prem">Premium</button>
+            <input type="text" class="search-input" id="searchBox" placeholder="🔍 Search keys or HWID...">
+        </div>
+        
+        <div id="keysGrid" class="keys-grid">
+            <div class="empty-state">
+                <h3>Loading keys...</h3>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allKeys = [];
+        let currentFilter = 'all';
+        let searchQuery = '';
+
+        async function loadKeys() {
+            try {
+                const response = await fetch('/api/keys');
+                allKeys = await response.json();
+                updateStats();
+                renderKeys();
+            } catch (error) {
+                document.getElementById('keysGrid').innerHTML = 
+                    '<div class="empty-state"><h3>Error loading keys</h3><p>' + error.message + '</p></div>';
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').textContent = allKeys.length;
+            document.getElementById('stat-used').textContent = allKeys.filter(k => k.status === 'used').length;
+            document.getElementById('stat-unused').textContent = allKeys.filter(k => k.status === 'unused').length;
+            document.getElementById('stat-basic').textContent = allKeys.filter(k => k.tier === 'BASIC').length;
+            document.getElementById('stat-prem').textContent = allKeys.filter(k => k.tier === 'PREM').length;
+        }
+
+        function renderKeys() {
+            const grid = document.getElementById('keysGrid');
+            let filtered = allKeys;
+
+            if (currentFilter === 'used') filtered = filtered.filter(k => k.status === 'used');
+            else if (currentFilter === 'unused') filtered = filtered.filter(k => k.status === 'unused');
+            else if (currentFilter === 'basic') filtered = filtered.filter(k => k.tier === 'BASIC');
+            else if (currentFilter === 'prem') filtered = filtered.filter(k => k.tier === 'PREM');
+
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                filtered = filtered.filter(k => 
+                    k.key.toLowerCase().includes(q) || 
+                    (k.hwid && k.hwid.toLowerCase().includes(q))
+                );
+            }
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div class="empty-state"><h3>No keys found</h3><p>Try changing filters or search query</p></div>';
+                return;
+            }
+
+            grid.innerHTML = filtered.map(k => {
+                const isUsed = k.status === 'used';
+                const tierClass = k.tier === 'PREM' ? 'prem' : 'basic';
+                const activated = k.activated_at ? new Date(k.activated_at).toLocaleString('ru-RU') : 'Never';
+                const hwid = k.hwid || 'Not bound';
+
+                return `
+                    <div class="key-card ${k.status}">
+                        <div class="key-header">
+                            <div class="key-code">${k.key}</div>
+                            <div class="tier-badge ${tierClass}">${k.tier}</div>
+                        </div>
+                        <div class="status-badge ${k.status}">${k.status}</div>
+                        <div class="key-info">
+                            <div><strong>HWID:</strong> ${hwid}</div>
+                            <div><strong>Activated:</strong> ${activated}</div>
+                        </div>
+                        <button class="toggle-btn ${isUsed ? 'mark-unused' : 'mark-used'}" 
+                                onclick="toggleStatus('${k.key}', '${isUsed ? 'unused' : 'used'}')">
+                            ${isUsed ? '🔄 Mark as Unused' : '✓ Mark as Used'}
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function toggleStatus(key, newStatus) {
+            try {
+                await fetch('/api/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key, status: newStatus })
+                });
+                await loadKeys();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                renderKeys();
+            });
+        });
+
+        document.getElementById('searchBox').addEventListener('input', (e) => {
+            searchQuery = e.target.value;
+            renderKeys();
+        });
+
+        loadKeys();
+    </script>
+</body>
+</html>
